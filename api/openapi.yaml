@@ -1,0 +1,212 @@
+openapi: 3.0.3
+info:
+  title: Equipment loans API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+paths:
+  /healthz:
+    get:
+      operationId: healthz
+      security: []
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: Service is up
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {type: string, enum: [ok]}
+  /items:
+    get:
+      operationId: listItems
+      description: Catalogue des exemplaires avec leur modèle. Rôle minimum student.
+      parameters:
+        - name: available
+          in: query
+          schema: {type: boolean}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: Items
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Item"}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+  /loans:
+    post:
+      operationId: borrowItem
+      description: Enregistre un emprunt pour un étudiant. Rôle minimum staff.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/BorrowRequest"}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "201":
+          description: Loan created
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Loan"}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /loans/me:
+    get:
+      operationId: myLoans
+      description: Emprunts de l'utilisateur authentifié. Rôle minimum student.
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: Loans
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Loan"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+  /loans/overdue:
+    get:
+      operationId: overdueLoans
+      description: Emprunts actifs en retard. Rôle minimum staff.
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: Overdue loans
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Loan"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+  /loans/{id}/return:
+    post:
+      operationId: returnLoan
+      description: Enregistre le retour et l'état constaté. Un exemplaire damaged passe en maintenance. Rôle minimum staff.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ReturnRequest"}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: Loan returned
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Loan"}
+        "400": {$ref: "#/components/responses/Error"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+  /loans/{id}/extend:
+    post:
+      operationId: extendLoan
+      description: Prolonge son propre emprunt, une seule fois, s'il n'est pas en retard. Un emprunt d'un autre utilisateur répond 404. Rôle minimum student.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: Loan extended
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Loan"}
+        "401": {$ref: "#/components/responses/Error"}
+        "403": {$ref: "#/components/responses/Error"}
+        "404": {$ref: "#/components/responses/Error"}
+        "409": {$ref: "#/components/responses/Error"}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - invalid_input
+            - unauthenticated
+            - forbidden
+            - model_not_found
+            - item_not_found
+            - loan_not_found
+            - item_not_borrowable
+            - item_already_borrowed
+            - quota_exceeded
+            - borrower_has_overdue_loan
+            - loan_already_returned
+            - loan_overdue
+            - extension_limit_reached
+            - internal
+        message: {type: string}
+    EquipmentModel:
+      type: object
+      required: [id, name, category, max_loan_days]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        category: {type: string}
+        max_loan_days: {type: integer, minimum: 1}
+    Item:
+      type: object
+      required: [id, inventory_number, status, model]
+      properties:
+        id: {type: string}
+        inventory_number: {type: string}
+        status: {type: string, enum: [available, borrowed, maintenance, lost]}
+        model: {$ref: "#/components/schemas/EquipmentModel"}
+    Loan:
+      type: object
+      required: [id, item_id, borrower_sub, borrowed_at, due_at, extensions_used]
+      properties:
+        id: {type: string}
+        item_id: {type: string}
+        borrower_sub: {type: string}
+        borrowed_at: {type: string, format: date-time}
+        due_at:
+          type: string
+          format: date-time
+          description: Minuit Europe/Paris qui clôt le dernier jour autorisé. L'emprunt est en retard dès que now dépasse strictement cet instant.
+        returned_at: {type: string, format: date-time, nullable: true}
+        return_state: {type: string, enum: [ok, damaged], nullable: true}
+        extensions_used: {type: integer, minimum: 0}
+    BorrowRequest:
+      type: object
+      required: [item_id, borrower_sub]
+      properties:
+        item_id: {type: string}
+        borrower_sub: {type: string}
+    ReturnRequest:
+      type: object
+      required: [state]
+      properties:
+        state: {type: string, enum: [ok, damaged]}
