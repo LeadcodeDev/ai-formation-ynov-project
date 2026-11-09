@@ -101,15 +101,21 @@ Valeurs de départ (à ajuster selon le contexte école, voir §11) : quota 3, d
 
 | Endpoint | Rôle minimum | Description |
 |---|---|---|
-| `GET /items` (catalogue, filtre disponibilité) | student | Lister modèles/exemplaires |
+| `POST /items` | staff | Ajouter un matériel au catalogue |
+| `GET /items` | student | Lister le catalogue (filtre `?available=true`) |
+| `GET /items/{id}` | student | Détail d'un matériel |
+| `PUT /items/{id}` | staff | Remplacer un matériel |
+| `DELETE /items/{id}` | staff | Retirer un matériel (refusé s'il est emprunté) |
 | `POST /loans` | staff | Créer un emprunt pour un étudiant |
-| `POST /loans/{id}/return` | staff | Enregistrer le retour + état |
-| `POST /loans/{id}/extend` | student | Prolonger son emprunt |
-| `GET /loans/me` | student | Mes emprunts |
-| `GET /loans/overdue` | staff | Lister les retards |
-| `GET /healthz` | public | Healthcheck pour Docker |
+| `GET /loans` | student | Lister les emprunts : un étudiant ne voit que les siens, le staff voit tous (filtre `?status=overdue`) |
+| `GET /loans/{id}` | student | Détail d'un emprunt (le sien pour un étudiant) |
+| `PATCH /loans/{id}` | staff / student | Staff : `{"return_state": "ok\|damaged"}` enregistre le retour. Étudiant propriétaire : `{"extend": true}` prolonge l'emprunt |
 
-Hors MVP (bonus) : file d'attente de réservation, notifications de retard, CRUD complet du catalogue, historique d'audit.
+Hors CRUD : `GET /healthz` (public), healthcheck pour Docker.
+
+Un emprunt ne se supprime pas (traçabilité) : il n'y a ni `PUT` ni `DELETE` sur `/loans`.
+
+Hors MVP (bonus) : file d'attente de réservation, notifications de retard, historique d'audit.
 
 ## 7. Architecture cible (hexagonale légère)
 
