@@ -1,0 +1,99 @@
+name: ynov-loans
+
+services:
+  loans-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${LOANS_DB_USER:-loans}
+      POSTGRES_PASSWORD: ${LOANS_DB_PASSWORD:-loans}
+      POSTGRES_DB: ${LOANS_DB_NAME:-loans}
+    volumes:
+      - loans-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ferriskey-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ferriskey
+      POSTGRES_PASSWORD: ${FERRISKEY_DB_PASSWORD:-ferriskey}
+      POSTGRES_DB: ferriskey
+    volumes:
+      - ferriskey-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ferriskey -d ferriskey"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  ferriskey-migrations:
+    image: ${FERRISKEY_IMAGE:-ghcr.io/ferriskey/ferriskey-api}:${FERRISKEY_TAG:-latest}
+    entrypoint: ["sqlx"]
+    command: ["migrate", "run", "--source", "/usr/local/src/ferriskey/migrations"]
+    environment:
+      DATABASE_URL: postgresql://ferriskey:${FERRISKEY_DB_PASSWORD:-ferriskey}@ferriskey-db/ferriskey
+    restart: "no"
+    depends_on:
+      ferriskey-db:
+        condition: service_healthy
+
+  ferriskey:
+    image: ${FERRISKEY_IMAGE:-ghcr.io/ferriskey/ferriskey-api}:${FERRISKEY_TAG:-latest}
+    environment:
+      DATABASE_HOST: ferriskey-db
+      DATABASE_NAME: ferriskey
+      DATABASE_USER: ferriskey
+      DATABASE_PASSWORD: ${FERRISKEY_DB_PASSWORD:-ferriskey}
+      ADMIN_USERNAME: ${FERRISKEY_ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${FERRISKEY_ADMIN_PASSWORD:-admin}
+      ADMIN_EMAIL: admin@example.com
+      ALLOWED_ORIGINS: http://localhost:5555
+      WEBAPP_URL: http://localhost:5555
+    ports:
+      - "3333:3333"
+    depends_on:
+      ferriskey-migrations:
+        condition: service_completed_successfully
+
+  realm-init:
+    build:
+      context: ./realm
+    environment:
+      FERRISKEY_URL: http://ferriskey:3333
+      FERRISKEY_ADMIN_USER: ${FERRISKEY_ADMIN_USER:-admin}
+      FERRISKEY_ADMIN_PASSWORD: ${FERRISKEY_ADMIN_PASSWORD:-admin}
+      REALM: ${OIDC_REALM:-loans}
+      CLIENT_ID: ${OIDC_CLIENT_ID:-loans-api}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-loans-api}
+      TEST_USER_PASSWORD: ${TEST_USER_PASSWORD:-Loans-Test-2026!}
+    restart: "no"
+    depends_on:
+      ferriskey:
+        condition: service_started
+
+  api:
+    build:
+      context: ..
+    environment:
+      PORT: "8080"
+      MCP_PORT: "8081"
+      DATABASE_URL: postgres://${LOANS_DB_USER:-loans}:${LOANS_DB_PASSWORD:-loans}@loans-db:5432/${LOANS_DB_NAME:-loans}?sslmode=disable
+      OIDC_ISSUER: http://localhost:3333/realms/${OIDC_REALM:-loans}
+      OIDC_JWKS_URL: http://ferriskey:3333/realms/${OIDC_REALM:-loans}/protocol/openid-connect/jwks.json
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-loans-api}
+      ROLES_CLAIM: realm_access.roles
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+    depends_on:
+      loans-db:
+        condition: service_healthy
+      realm-init:
+        condition: service_completed_successfully
+
+volumes:
+  loans-data:
+  ferriskey-data:

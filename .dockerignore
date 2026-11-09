@@ -1,0 +1,10 @@
+.git
+.github
+.gitignore
+.claude
+docs
+deploy
+README.md
+CLAUDE.md
+*.md
+bin
